@@ -8,10 +8,12 @@ const CategoryChart = ({ transactions, categories }) => {
   const categoryTotals = {};
   
   expenseTransactions.forEach(transaction => {
-    if (categoryTotals[transaction.category]) {
-      categoryTotals[transaction.category] += transaction.amount;
+    // Use category name from the category object if available
+    const categoryName = transaction.category ? transaction.category.name : 'Unknown';
+    if (categoryTotals[categoryName]) {
+      categoryTotals[categoryName] += transaction.amount;
     } else {
-      categoryTotals[transaction.category] = transaction.amount;
+      categoryTotals[categoryName] = transaction.amount;
     }
   });
 
@@ -19,6 +21,7 @@ const CategoryChart = ({ transactions, categories }) => {
   
   const categoryData = Object.entries(categoryTotals)
     .map(([categoryName, amount]) => {
+      // Find category by name to get color
       const category = categories.find(cat => cat.name === categoryName);
       return {
         name: categoryName,
