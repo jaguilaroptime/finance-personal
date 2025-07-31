@@ -7,11 +7,15 @@ import { Badge } from './ui/badge';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { ArrowLeft, Plus, Trash2, Edit } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { mockCategories } from '../mock';
+import axios from 'axios';
 import { useToast } from '../hooks/use-toast';
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const API = `${BACKEND_URL}/api`;
 
 const Categories = () => {
   const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [newCategory, setNewCategory] = useState({
     name: '',
     type: 'expense',
@@ -23,11 +27,27 @@ const Categories = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    // Load mock categories (will be replaced with API call later)
-    setCategories(mockCategories);
+    loadCategories();
   }, []);
 
-  const handleAddCategory = (e) => {
+  const loadCategories = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.get(`${API}/categories`);
+      setCategories(response.data);
+    } catch (error) {
+      console.error('Error loading categories:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load categories. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddCategory = async (e) => {
     e.preventDefault();
     
     if (!newCategory.name.trim()) {
@@ -39,43 +59,53 @@ const Categories = () => {
       return;
     }
 
-    // Check if category name already exists
-    if (categories.some(cat => cat.name.toLowerCase() === newCategory.name.toLowerCase())) {
+    try {
+      const categoryData = {
+        ...newCategory,
+        name: newCategory.name.trim()
+      };
+
+      const response = await axios.post(`${API}/categories`, categoryData);
+      setCategories(prev => [...prev, response.data]);
+      setNewCategory({
+        name: '',
+        type: 'expense',
+        color: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')
+      });
+
+      toast({
+        title: "Category Added",
+        description: `"${response.data.name}" has been added successfully.`,
+      });
+    } catch (error) {
+      console.error('Error adding category:', error);
       toast({
         title: "Error",
-        description: "A category with this name already exists.",
+        description: error.response?.data?.detail || "Failed to add category. Please try again.",
         variant: "destructive"
       });
-      return;
     }
-
-    const category = {
-      id: Date.now().toString(),
-      ...newCategory,
-      name: newCategory.name.trim()
-    };
-
-    setCategories(prev => [...prev, category]);
-    setNewCategory({
-      name: '',
-      type: 'expense',
-      color: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')
-    });
-
-    toast({
-      title: "Category Added",
-      description: `"${category.name}" has been added successfully.`,
-    });
   };
 
-  const handleDeleteCategory = (categoryId) => {
+  const handleDeleteCategory = async (categoryId) => {
     const category = categories.find(cat => cat.id === categoryId);
-    setCategories(prev => prev.filter(cat => cat.id !== categoryId));
     
-    toast({
-      title: "Category Deleted",
-      description: `"${category.name}" has been removed.`,
-    });
+    try {
+      await axios.delete(`${API}/categories/${categoryId}`);
+      setCategories(prev => prev.filter(cat => cat.id !== categoryId));
+      
+      toast({
+        title: "Category Deleted",
+        description: `"${category.name}" has been removed.`,
+      });
+    } catch (error) {
+      console.error('Error deleting category:', error);
+      toast({
+        title: "Error",
+        description: error.response?.data?.detail || "Failed to delete category. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleEditCategory = (category) => {
@@ -83,7 +113,7 @@ const Categories = () => {
     setEditingCategory({ ...category });
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editingCategory.name.trim()) {
       toast({
         title: "Error",
@@ -93,17 +123,32 @@ const Categories = () => {
       return;
     }
 
-    setCategories(prev => prev.map(cat => 
-      cat.id === editingId ? { ...editingCategory, name: editingCategory.name.trim() } : cat
-    ));
-    
-    setEditingId(null);
-    setEditingCategory({});
-    
-    toast({
-      title: "Category Updated",
-      description: "Category has been updated successfully.",
-    });
+    try {
+      const categoryData = {
+        ...editingCategory,
+        name: editingCategory.name.trim()
+      };
+
+      const response = await axios.put(`${API}/categories/${editingId}`, categoryData);
+      setCategories(prev => prev.map(cat => 
+        cat.id === editingId ? response.data : cat
+      ));
+      
+      setEditingId(null);
+      setEditingCategory({});
+      
+      toast({
+        title: "Category Updated",
+        description: "Category has been updated successfully.",
+      });
+    } catch (error) {
+      console.error('Error updating category:', error);
+      toast({
+        title: "Error",
+        description: error.response?.data?.detail || "Failed to update category. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleCancelEdit = () => {
@@ -118,6 +163,17 @@ const Categories = () => {
 
   const incomeCategories = categories.filter(cat => cat.type === 'income');
   const expenseCategories = categories.filter(cat => cat.type === 'expense');
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading categories...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto">

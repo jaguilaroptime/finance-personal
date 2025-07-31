@@ -4,38 +4,74 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Plus, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { mockTransactions, mockCategories, mockMonthlyData } from '../mock';
+import axios from 'axios';
 import TransactionList from './TransactionList';
 import MonthlyChart from './MonthlyChart';
 import CategoryChart from './CategoryChart';
+import { useToast } from '../hooks/use-toast';
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const API = `${BACKEND_URL}/api`;
 
 const Dashboard = () => {
   const [transactions, setTransactions] = useState([]);
   const [categories, setCategories] = useState([]);
   const [monthlyData, setMonthlyData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState({
+    total_income: 0,
+    total_expenses: 0,
+    balance: 0
+  });
+  
+  const { toast } = useToast();
 
   useEffect(() => {
-    // Load mock data (will be replaced with API calls later)
-    setTransactions(mockTransactions);
-    setCategories(mockCategories);
-    setMonthlyData(mockMonthlyData);
+    loadDashboardData();
   }, []);
 
-  // Calculate totals
-  const totalIncome = transactions
-    .filter(t => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0);
-  
-  const totalExpenses = transactions
-    .filter(t => t.type === 'expense')
-    .reduce((sum, t) => sum + t.amount, 0);
-  
-  const balance = totalIncome - totalExpenses;
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+      
+      // Load dashboard summary data
+      const dashboardResponse = await axios.get(`${API}/dashboard`);
+      const dashboardData = dashboardResponse.data;
+      
+      setSummary({
+        total_income: dashboardData.total_income,
+        total_expenses: dashboardData.total_expenses,
+        balance: dashboardData.balance
+      });
+      
+      setTransactions(dashboardData.recent_transactions);
+      setMonthlyData(dashboardData.monthly_data);
+      
+      // Load categories for chart
+      const categoriesResponse = await axios.get(`${API}/categories`);
+      setCategories(categoriesResponse.data);
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load dashboard data. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  // Recent transactions (last 5)
-  const recentTransactions = transactions
-    .sort((a, b) => new Date(b.date) - new Date(a.date))
-    .slice(0, 5);
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -50,7 +86,7 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-800">
-              ${totalIncome.toFixed(2)}
+              ${summary.total_income.toFixed(2)}
             </div>
           </CardContent>
         </Card>
@@ -64,21 +100,21 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-800">
-              ${totalExpenses.toFixed(2)}
+              ${summary.total_expenses.toFixed(2)}
             </div>
           </CardContent>
         </Card>
 
-        <Card className={`bg-gradient-to-r ${balance >= 0 ? 'from-blue-100 to-blue-200 border-blue-300' : 'from-orange-100 to-orange-200 border-orange-300'}`}>
+        <Card className={`bg-gradient-to-r ${summary.balance >= 0 ? 'from-blue-100 to-blue-200 border-blue-300' : 'from-orange-100 to-orange-200 border-orange-300'}`}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className={`text-sm font-medium ${balance >= 0 ? 'text-blue-800' : 'text-orange-800'}`}>
+            <CardTitle className={`text-sm font-medium ${summary.balance >= 0 ? 'text-blue-800' : 'text-orange-800'}`}>
               Balance
             </CardTitle>
-            <DollarSign className={`h-4 w-4 ${balance >= 0 ? 'text-blue-600' : 'text-orange-600'}`} />
+            <DollarSign className={`h-4 w-4 ${summary.balance >= 0 ? 'text-blue-600' : 'text-orange-600'}`} />
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${balance >= 0 ? 'text-blue-800' : 'text-orange-800'}`}>
-              ${balance.toFixed(2)}
+            <div className={`text-2xl font-bold ${summary.balance >= 0 ? 'text-blue-800' : 'text-orange-800'}`}>
+              ${summary.balance.toFixed(2)}
             </div>
           </CardContent>
         </Card>
@@ -111,7 +147,7 @@ const Dashboard = () => {
           <CardTitle className="text-gray-800">Recent Transactions</CardTitle>
         </CardHeader>
         <CardContent>
-          <TransactionList transactions={recentTransactions} categories={categories} />
+          <TransactionList transactions={transactions} categories={categories} />
         </CardContent>
       </Card>
     </div>

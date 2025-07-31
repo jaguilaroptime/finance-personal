@@ -8,15 +8,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { ArrowLeft, Plus } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { mockCategories } from '../mock';
+import axios from 'axios';
 import { useToast } from '../hooks/use-toast';
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const API = `${BACKEND_URL}/api`;
 
 const AddTransaction = () => {
   const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     type: 'expense',
     amount: '',
-    category: '',
+    category_id: '',
     description: '',
     date: new Date().toISOString().split('T')[0]
   });
@@ -27,9 +31,22 @@ const AddTransaction = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    // Load mock categories (will be replaced with API call later)
-    setCategories(mockCategories);
+    loadCategories();
   }, []);
+
+  const loadCategories = async () => {
+    try {
+      const response = await axios.get(`${API}/categories`);
+      setCategories(response.data);
+    } catch (error) {
+      console.error('Error loading categories:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load categories. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({
@@ -38,31 +55,42 @@ const AddTransaction = () => {
     }));
   };
 
-  const handleAddCategory = () => {
-    if (newCategory.trim()) {
-      const category = {
-        id: Date.now().toString(),
+  const handleAddCategory = async () => {
+    if (!newCategory.trim()) return;
+    
+    try {
+      const categoryData = {
         name: newCategory.trim(),
         type: formData.type,
         color: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')
       };
       
-      setCategories(prev => [...prev, category]);
-      setFormData(prev => ({ ...prev, category: category.name }));
+      const response = await axios.post(`${API}/categories`, categoryData);
+      const createdCategory = response.data;
+      
+      setCategories(prev => [...prev, createdCategory]);
+      setFormData(prev => ({ ...prev, category_id: createdCategory.id }));
       setNewCategory('');
       setShowAddCategory(false);
       
       toast({
         title: "Category Added",
-        description: `"${category.name}" has been added to your categories.`,
+        description: `"${createdCategory.name}" has been added to your categories.`,
+      });
+    } catch (error) {
+      console.error('Error adding category:', error);
+      toast({
+        title: "Error",
+        description: error.response?.data?.detail || "Failed to add category. Please try again.",
+        variant: "destructive"
       });
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!formData.amount || !formData.category) {
+    if (!formData.amount || !formData.category_id) {
       toast({
         title: "Error",
         description: "Please fill in all required fields.",
@@ -71,31 +99,46 @@ const AddTransaction = () => {
       return;
     }
 
-    // Mock transaction creation (will be replaced with API call later)
-    const transaction = {
-      id: Date.now().toString(),
-      ...formData,
-      amount: parseFloat(formData.amount)
-    };
+    try {
+      setLoading(true);
+      
+      const transactionData = {
+        ...formData,
+        amount: parseFloat(formData.amount),
+        category_id: parseInt(formData.category_id),
+        date: new Date(formData.date).toISOString()
+      };
 
-    toast({
-      title: "Transaction Added",
-      description: `${formData.type === 'income' ? 'Income' : 'Expense'} of $${formData.amount} has been recorded.`,
-    });
+      await axios.post(`${API}/transactions`, transactionData);
 
-    // Reset form
-    setFormData({
-      type: 'expense',
-      amount: '',
-      category: '',
-      description: '',
-      date: new Date().toISOString().split('T')[0]
-    });
+      toast({
+        title: "Transaction Added",
+        description: `${formData.type === 'income' ? 'Income' : 'Expense'} of $${formData.amount} has been recorded.`,
+      });
 
-    // Navigate back to dashboard after a short delay
-    setTimeout(() => {
-      navigate('/');
-    }, 1500);
+      // Reset form
+      setFormData({
+        type: 'expense',
+        amount: '',
+        category_id: '',
+        description: '',
+        date: new Date().toISOString().split('T')[0]
+      });
+
+      // Navigate back to dashboard after a short delay
+      setTimeout(() => {
+        navigate('/');
+      }, 1500);
+    } catch (error) {
+      console.error('Error creating transaction:', error);
+      toast({
+        title: "Error",
+        description: error.response?.data?.detail || "Failed to add transaction. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const filteredCategories = categories.filter(cat => cat.type === formData.type);
@@ -122,7 +165,10 @@ const AddTransaction = () => {
               <Label className="text-sm font-medium text-gray-700">Transaction Type</Label>
               <RadioGroup
                 value={formData.type}
-                onValueChange={(value) => handleInputChange('type', value)}
+                onValueChange={(value) => {
+                  handleInputChange('type', value);
+                  handleInputChange('category_id', ''); // Reset category when type changes
+                }}
                 className="flex space-x-6"
               >
                 <div className="flex items-center space-x-2">
@@ -155,13 +201,13 @@ const AddTransaction = () => {
             <div className="space-y-2">
               <Label className="text-sm font-medium text-gray-700">Category *</Label>
               <div className="flex gap-2">
-                <Select value={formData.category} onValueChange={(value) => handleInputChange('category', value)}>
+                <Select value={formData.category_id.toString()} onValueChange={(value) => handleInputChange('category_id', parseInt(value))}>
                   <SelectTrigger className="flex-1">
                     <SelectValue placeholder="Select a category" />
                   </SelectTrigger>
                   <SelectContent>
                     {filteredCategories.map(category => (
-                      <SelectItem key={category.id} value={category.name}>
+                      <SelectItem key={category.id} value={category.id.toString()}>
                         <div className="flex items-center gap-2">
                           <div 
                             className="w-3 h-3 rounded-full" 
@@ -229,9 +275,17 @@ const AddTransaction = () => {
             {/* Submit Button */}
             <Button
               type="submit"
+              disabled={loading}
               className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white text-lg py-3"
             >
-              Add Transaction
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Adding Transaction...
+                </div>
+              ) : (
+                'Add Transaction'
+              )}
             </Button>
           </form>
         </CardContent>
