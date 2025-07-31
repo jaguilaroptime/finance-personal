@@ -11,7 +11,7 @@ class TransactionType(str, Enum):
 class CategoryBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     type: TransactionType
-    color: str = Field(..., regex=r'^#[0-9A-Fa-f]{6}$')
+    color: str = Field(..., pattern=r'^#[0-9A-Fa-f]{6}$')
 
 class CategoryCreate(CategoryBase):
     pass
